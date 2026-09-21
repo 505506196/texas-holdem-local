@@ -1,0 +1,17 @@
+# 临时服务脚本与调试产物
+_tmp_*.js
+_dbg*.js
+
+# 测试截图与浏览器自动化产物
+.playwright-mcp/
+*.png
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Node（本项目零依赖，仅防止误提交）
+node_modules/
+npm-debug.log*

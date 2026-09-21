@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>德州扑克 · 本地版</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- 设置界面 -->
+<div id="setup-screen" class="screen">
+  <div class="setup-card">
+    <h1>♠ 德州扑克 <span class="sub">本地单机版</span></h1>
+
+    <div class="field">
+      <label>对手数量</label>
+      <div class="seg" id="optOpponents">
+        <button data-v="1">1</button>
+        <button data-v="2">2</button>
+        <button data-v="3" class="active">3</button>
+        <button data-v="4">4</button>
+        <button data-v="5">5</button>
+        <button data-v="6">6</button>
+        <button data-v="7">7</button>
+      </div>
+      <div class="field-hint">含你自己，最多 8 人同桌；1 人即单挑</div>
+    </div>
+
+    <div class="field">
+      <label>起始筹码</label>
+      <div class="seg" id="optStack">
+        <button data-v="500">500</button>
+        <button data-v="1000" class="active">1000</button>
+        <button data-v="2000">2000</button>
+        <button data-v="5000">5000</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>盲注等级（小盲/大盲）</label>
+      <div class="seg" id="optBlinds">
+        <button data-v="5,10">5 / 10</button>
+        <button data-v="10,20" class="active">10 / 20</button>
+        <button data-v="25,50">25 / 50</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>对手风格</label>
+      <div class="seg" id="optStyle">
+        <button data-v="random" class="active">随机混合</button>
+        <button data-v="tight">全部紧手</button>
+        <button data-v="loose">全部松凶</button>
+      </div>
+    </div>
+
+    <button id="btnStart" class="btn-primary">开始游戏</button>
+    <p class="hint">牌局在本机浏览器内运行，不联网、不上传任何数据。</p>
+  </div>
+</div>
+
+<!-- 游戏界面 -->
+<div id="game-screen" class="screen hidden">
+  <div class="topbar">
+    <div class="hand-info">
+      <span id="handNumber">第 1 手</span>
+      <span id="streetLabel">翻牌前</span>
+    </div>
+    <button id="btnMenu" class="btn-ghost">重新开始</button>
+  </div>
+
+  <div class="main-area">
+    <aside class="log-panel" id="logPanel">
+      <div class="log-title">
+        <span>本手行动</span>
+        <span class="log-hand" id="logHandNo"></span>
+      </div>
+      <div class="log-current" id="logCurrent"></div>
+      <div class="log-hist-wrap hidden" id="logHistWrap">
+        <div class="log-subtitle">历史牌局</div>
+        <div class="log-history" id="logHistory"></div>
+      </div>
+    </aside>
+
+    <div class="table-wrap">
+      <div class="table-felt">
+        <div class="board" id="board"></div>
+        <div class="pot-display" id="potDisplay">底池 0</div>
+        <div class="seats" id="seats"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="action-bar hidden" id="actionBar">
+    <div class="raise-panel hidden" id="raisePanel">
+      <input type="range" id="raiseSlider" min="0" max="100" value="0">
+      <div class="raise-row">
+        <button class="chip-btn" data-ratio="0.5">1/2 池</button>
+        <button class="chip-btn" data-ratio="0.75">3/4 池</button>
+        <button class="chip-btn" data-ratio="1">全池</button>
+        <input type="number" id="raiseInput" min="0" step="1">
+        <button id="btnConfirmRaise" class="btn-primary small">确认</button>
+      </div>
+    </div>
+    <div class="action-row" id="actionRow"></div>
+  </div>
+
+  <!-- 本手结束：轻量条，不遮挡牌桌 -->
+  <div class="handend-bar hidden" id="handEndBar">
+    <div class="he-info" id="heInfo"></div>
+    <div class="he-btns">
+      <button id="btnHeReview" class="btn-ghost">查看复盘</button>
+      <button id="btnHeNext" class="btn-primary small">下一手</button>
+    </div>
+  </div>
+
+  <!-- 我已弃牌：可快进跳过本手 -->
+  <div class="skip-bar hidden" id="skipBar">
+    <span class="skip-note">你已弃牌，本手仍在进行</span>
+    <button id="btnSkip" class="btn-ghost">跳过本手 ⏭</button>
+  </div>
+</div>
+
+<!-- 摊牌结果：右侧停靠，不遮挡牌桌 -->
+<div id="result-panel" class="side-panel hidden">
+  <div class="side-head">
+    <h2 id="resultTitle">摊牌结果</h2>
+    <button id="btnCloseResult" class="icon-btn" title="收起">×</button>
+  </div>
+  <div id="resultBody" class="side-body"></div>
+  <div class="side-foot">
+    <button id="btnReview" class="btn-ghost wide">复盘本手</button>
+    <button id="btnNextHand" class="btn-primary">下一手</button>
+  </div>
+</div>
+
+<!-- 复盘分析：右侧停靠 -->
+<div id="review-panel" class="side-panel wide-panel hidden">
+  <div class="side-head">
+    <h2>本手复盘</h2>
+    <button id="btnCloseReview" class="icon-btn" title="收起">×</button>
+  </div>
+  <div id="reviewBody" class="side-body"></div>
+  <div class="side-foot">
+    <button id="btnReviewNext" class="btn-primary">下一手</button>
+  </div>
+</div>
+
+<!-- 游戏结束浮层 -->
+<div id="gameover-overlay" class="overlay hidden">
+  <div class="result-card">
+    <h2 id="gameoverTitle">游戏结束</h2>
+    <p id="gameoverBody"></p>
+    <button id="btnRestart" class="btn-primary">再来一局</button>
+  </div>
+</div>
+
+<script src="js/cards.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/range.js"></script>
+<script src="js/review.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
