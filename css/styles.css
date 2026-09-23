@@ -144,6 +144,32 @@ body {
   color: var(--muted);
 }
 
+/* 盲注等级标签 */
+.blind-tag {
+  padding: 3px 10px;
+  background: rgba(232, 194, 106, .12);
+  border: 1px solid rgba(232, 194, 106, .35);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+  cursor: default;
+  transition: .2s;
+}
+/* 刚涨盲时闪一下，让变化不容易被忽略 */
+.blind-tag.bumped { animation: blindPulse 1.5s ease-out; }
+@keyframes blindPulse {
+  0%   { background: rgba(232, 194, 106, .55); color: #2a1e08; transform: scale(1.14); }
+  100% { background: rgba(232, 194, 106, .12); color: var(--gold); transform: none; }
+}
+
+/* 日志里的涨盲行 */
+.log-current .blind {
+  color: var(--gold);
+  font-weight: 700;
+  padding: 3px 0;
+}
+
 /* ---------- 牌桌 ---------- */
 /* 主区域：左侧行动记录 + 中间牌桌 */
 .main-area {
@@ -195,32 +221,81 @@ body {
 }
 
 /* ---------- 扑克牌 ---------- */
+/* 标准扑克布局：左上角索引（点数+花色）+ 中央大花色。
+   比原来的竖排居中更易读——余光扫到角标就能认牌，不必聚焦中心 */
 .card {
-  width: 64px;
-  height: 92px;
-  background: #fdfdf8;
-  border-radius: 7px;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, .4);
+  position: relative;
+  width: 66px;
+  height: 94px;
+  background: linear-gradient(160deg, #ffffff 0%, #f4f1e8 100%);
+  border: 1px solid rgba(0, 0, 0, .28);
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255, 255, 255, .9);
+  color: #16181c;
+  font-weight: 800;
+  user-select: none;
+  overflow: hidden;
+  animation: dealIn .28s ease-out;
+}
+
+/* 左上角索引：点数在上、花色在下，紧凑排列 */
+.card .idx {
+  position: absolute;
+  top: 4px;
+  left: 5px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  color: #1a1a1a;
-  font-weight: 700;
-  user-select: none;
-  animation: dealIn .28s ease-out;
+  line-height: .96;
+  z-index: 2;
 }
-.card .r { font-size: 24px; line-height: 1; }
-.card .s { font-size: 22px; line-height: 1.1; }
-.card.red { color: var(--red); }
+.card .idx .r {
+  font-size: 21px;
+  letter-spacing: -.5px;
+  font-variant-numeric: tabular-nums;
+}
+.card .idx .s { font-size: 14px; margin-top: 1px; }
+
+/* 中央大花色：主要识别锚点 */
+.card .pip {
+  position: absolute;
+  right: 5px;
+  bottom: 2px;
+  font-size: 40px;
+  line-height: 1;
+  opacity: .96;
+  z-index: 1;
+}
+
+/* 红黑对比拉大：红用深一档的正红，黑用近纯黑 */
+.card.red { color: #cc1f2d; }
+.card:not(.red):not(.back) { color: #14161a; }
+
 .card.back {
-  background: repeating-linear-gradient(45deg, #2c5aa0 0 6px, #24487f 6px 12px);
-  border: 2px solid #f0f0f0;
+  background:
+    repeating-linear-gradient(45deg, #2f5fa8 0 5px, #24487f 5px 10px);
+  border: 2px solid #eef2f6;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .45);
 }
-.card.small { width: 42px; height: 60px; }
-.card.small .r { font-size: 16px; }
-.card.small .s { font-size: 14px; }
-.card.dim { opacity: .38; }
+/* 牌背中央留一个菱形，避免纯条纹显得空 */
+.card.back::after {
+  content: '';
+  position: absolute;
+  inset: 26% 30%;
+  border: 2px solid rgba(255, 255, 255, .34);
+  border-radius: 3px;
+  transform: rotate(45deg);
+}
+
+/* 小尺寸：座位手牌用，等比缩小并保持角标可读 */
+.card.small { width: 44px; height: 62px; border-radius: 6px; }
+.card.small .idx { top: 2px; left: 3px; }
+.card.small .idx .r { font-size: 14px; }
+.card.small .idx .s { font-size: 9px; }
+.card.small .pip { font-size: 24px; right: 3px; bottom: 0; }
+.card.small.back::after { inset: 24% 28%; border-width: 1.5px; }
+
+.card.dim { opacity: .34; }
 
 @keyframes dealIn {
   from { transform: translateY(-18px) scale(.9); opacity: 0; }

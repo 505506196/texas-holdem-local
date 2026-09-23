@@ -5,7 +5,7 @@ const AI_NAMES = ['老陈', '阿杰', '大刘', '小林', '阿May', '老K', '阿
 const AI_DELAY = 750;          // AI 思考延时，让节奏可读
 
 let game = null;
-let config = { opponents: 3, stack: 1000, sb: 10, bb: 20, style: 'random' };
+let config = { opponents: 3, stack: 1000, sb: 10, bb: 20, style: 'random', blindUp: 10 };
 let revealAll = false;         // 摊牌时是否公开所有手牌
 let winnerIds = [];
 let aiTimer = null;
@@ -23,6 +23,7 @@ function initSetup() {
     config.sb = sb; config.bb = bb;
   });
   bindSeg('optStyle', v => config.style = v);
+  bindSeg('optBlindUp', v => config.blindUp = Number(v));
 
   $('btnStart').onclick = startGame;
   $('btnMenu').onclick = () => {
@@ -103,6 +104,7 @@ function startGame() {
   game = new Game({
     players,
     smallBlind: config.sb,
+    blindInterval: config.blindUp,
     bigBlind: config.bb,
     startStack: config.stack,
     onEvent: handleEvent
@@ -154,6 +156,14 @@ function handleEvent(ev) {
       render();
       setTimeout(() => showResult(ev.winners, ev.showCards), fastForward ? 120 : 600);
       break;
+    case 'blindUp': {
+      // 闪一下标签，避免涨盲被忽略
+      const bl = $('blindLabel');
+      bl.classList.remove('bumped');
+      void bl.offsetWidth;          // 强制重排，让动画可重复触发
+      bl.classList.add('bumped');
+      break;
+    }
     case 'gameOver':
       setTimeout(() => showGameOver(ev), 500);
       break;
@@ -211,6 +221,16 @@ function render() {
   if (!game) return;
   $('handNumber').textContent = `第 ${game.handNumber} 手`;
   $('logHandNo').textContent = `第 ${game.handNumber} 手`;
+  // 盲注等级：涨盲后要能一眼看到当前级别，以及距下次涨盲还有几手
+  const bl = $('blindLabel');
+  bl.textContent = `盲注 ${game.smallBlind}/${game.bigBlind}`
+    + (game.blindLevel > 1 ? ` · L${game.blindLevel}` : '');
+  if (game.blindInterval > 0) {
+    const left = game.blindInterval - ((game.handNumber - 1) % game.blindInterval);
+    bl.title = `第 ${game.blindLevel} 级，再 ${left} 手后翻倍`;
+  } else {
+    bl.title = '固定盲注';
+  }
   $('streetLabel').textContent = STREET_LABEL[game.street] || '';
   $('potDisplay').textContent = `底池 ${game.pot}`;
   renderBoard();
@@ -233,7 +253,10 @@ function cardEl(card, small) {
   const el = document.createElement('div');
   el.className = 'card' + (small ? ' small' : '');
   if (card.suit === 'h' || card.suit === 'd') el.classList.add('red');
-  el.innerHTML = `<div class="r">${card.label}</div><div class="s">${card.symbol}</div>`;
+  // 左上角索引 + 中央大花色：余光扫到角标即可认牌
+  el.innerHTML =
+    `<div class="idx"><div class="r">${card.label}</div><div class="s">${card.symbol}</div></div>`
+    + `<div class="pip">${card.symbol}</div>`;
   return el;
 }
 

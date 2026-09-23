@@ -8,8 +8,13 @@ const STREET_LABEL = {
 
 class Game {
   constructor(config) {
-    this.smallBlind = config.smallBlind || 10;
-    this.bigBlind = config.bigBlind || 20;
+    this.baseSmallBlind = config.smallBlind || 10;
+    this.baseBigBlind = config.bigBlind || 20;
+    this.smallBlind = this.baseSmallBlind;
+    this.bigBlind = this.baseBigBlind;
+    // 每隔多少手把盲注翻一倍；0 表示固定盲注不涨
+    this.blindInterval = config.blindInterval != null ? config.blindInterval : 10;
+    this.blindLevel = 1;
     this.startStack = config.startStack || 1000;
     this.onEvent = config.onEvent || (() => {});
 
@@ -81,6 +86,25 @@ class Game {
     }
 
     this.handNumber++;
+    // 涨盲：每 blindInterval 手翻一倍（10/20 → 20/40 → 40/80 …）
+    // 必须在 postBlinds 之前生效，且要早于 minRaise 的初始化
+    if (this.blindInterval > 0) {
+      const level = Math.floor((this.handNumber - 1) / this.blindInterval) + 1;
+      if (level !== this.blindLevel) {
+        this.blindLevel = level;
+        const mult = Math.pow(2, level - 1);
+        this.smallBlind = this.baseSmallBlind * mult;
+        this.bigBlind = this.baseBigBlind * mult;
+        this.addLog(
+          `▲ 盲注升至第 ${level} 级：${this.smallBlind} / ${this.bigBlind}`,
+          'blind'
+        );
+        this.emit('blindUp', {
+          level, smallBlind: this.smallBlind, bigBlind: this.bigBlind
+        });
+      }
+    }
+
     this.street = 'preflop';
     this.board = [];
     this.pot = 0;
@@ -158,11 +182,30 @@ class Game {
     this.forceBet(sbIndex, this.smallBlind, '小盲');
     this.forceBet(bbIndex, this.bigBlind, '大盲');
 
-    this.currentBet = this.bigBlind;
+    this.currentBet = Math.max(...this.players.map(p => p.bet));
     this.minRaise = this.bigBlind;
     // 翻牌前从大盲左手位开始行动
     this.actingIndex = this.nextActive(bbIndex);
-    if (this.actingIndex === -1) this.actingIndex = bbIndex;
+    // 盲注涨到吃掉所有人筹码时，全桌都会被迫 all-in，此时无人可行动。
+    // 原来回退成 actingIndex = bbIndex，但大盲已 all-in、没有合法动作，
+    // 状态机就此卡死、底池留在池里无人结算。改为直接发完公共牌进摊牌。
+    if (this.actingIndex === -1) {
+      this.emit('turn', { index: -1, player: null });
+      setTimeout(() => this.runOutBoard(), 400);
+    }
+  }
+
+  // 所有人都 all-in：把剩余公共牌一次发完，然后结算
+  runOutBoard() {
+    if (this.handOver) return;
+    while (this.board.length < 5) {
+      this.deck.pop();                       // 烧牌
+      this.board.push(this.deck.pop());
+    }
+    this.street = 'river';
+    this.addLog(`—— 全员全下，发完公共牌：${this.board.map(cardToString).join(' ')} ——`, 'street');
+    this.emit('street', { street: 'river', board: this.board });
+    this.finishHand();
   }
 
   forceBet(index, amount, label) {

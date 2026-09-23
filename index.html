@@ -47,6 +47,17 @@
     </div>
 
     <div class="field">
+      <label>涨盲节奏</label>
+      <div class="seg" id="optBlindUp">
+        <button data-v="5">每 5 手</button>
+        <button data-v="10" class="active">每 10 手</button>
+        <button data-v="20">每 20 手</button>
+        <button data-v="0">不涨盲</button>
+      </div>
+      <div class="field-hint">到点盲注翻一倍：10/20 → 20/40 → 40/80，牌局不会无限拖长</div>
+    </div>
+
+    <div class="field">
       <label>对手风格</label>
       <div class="seg" id="optStyle">
         <button data-v="random" class="active">随机混合</button>
@@ -66,6 +77,7 @@
     <div class="hand-info">
       <span id="handNumber">第 1 手</span>
       <span id="streetLabel">翻牌前</span>
+      <span id="blindLabel" class="blind-tag">盲注 10/20</span>
     </div>
     <button id="btnMenu" class="btn-ghost">重新开始</button>
   </div>

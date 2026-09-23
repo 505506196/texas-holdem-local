@@ -564,19 +564,30 @@ const ADVICE_LABEL = {
 // 规则引擎没命中时用这个兜底
 function baselineAdvice(c) {
   const { equity, effectiveEquity, needEquity, toCall, canRaise,
-          inPosition, texture, draws, opponents } = c;
+          inPosition, texture, draws, opponents, callEV, pot } = c;
 
-  const penalty = opponents > 1 ? 0.04 * (opponents - 1) : 0;
+  // 多人折价：原来每多一家扣 4 个点，叠加后过重
+  // （4 家对手扣 12 点，直接把大量边际跟注推成弃牌）。
+  // 改为递减式——第二家扣得多，之后每家递减，且总折价封顶 7 个点。
+  const penalty = opponents > 1
+    ? Math.min(0.07, 0.03 + 0.015 * (opponents - 2))
+    : 0;
   const eqAdj = equity - penalty;
 
   if (toCall === 0) {
-    const threshold = inPosition ? 0.58 : 0.63;
+    // 无人下注时的价值下注门槛下调 5 个点：错过价值下注的代价
+    // 通常高于被加注的代价，尤其有位置时
+    const threshold = inPosition ? 0.53 : 0.58;
     if (eqAdj > threshold && canRaise) {
       const size = texture.wet > 0.55 ? '2/3 ~ 3/4 池' : '1/3 ~ 1/2 池';
+      // 给出具体金额，省得用户自己按比例换算
+      const lo = Math.round(pot * (texture.wet > 0.55 ? 0.66 : 0.33));
+      const hi = Math.round(pot * (texture.wet > 0.55 ? 0.75 : 0.5));
       return {
         type: 'bet', size,
         reason: `胜率 ${pct(equity)} 领先${inPosition ? '且有位置' : ''}，`
-          + `应价值下注；${texture.label}建议尺度 ${size}`
+          + `应价值下注。底池 ${pot}，${texture.label}建议下 ${size}`
+          + `（约 ${lo} ~ ${hi} 筹码）`
       };
     }
     if (eqAdj > 0.45) {
@@ -585,15 +596,30 @@ function baselineAdvice(c) {
     return { type: 'check', reason: `胜率 ${pct(equity)} 偏低，过牌免费看牌` };
   }
 
-  if (eqAdj > needEquity + 0.18 && canRaise) {
+  if (eqAdj > needEquity + 0.14 && canRaise) {
+    // 加注到对手注额的 2.5~3 倍，并算出加注后对手面对的赔率，
+    // 让用户知道这个尺度能给对手多大压力
+    const mult = texture.wet > 0.55 ? 3 : 2.5;
+    const target = Math.round(toCall * mult);
+    const oppFaces = target - toCall;                 // 对手还需补的金额
+    const oppPot = pot + toCall + target;             // 对手跟注后的底池
+    const oppNeed = oppPot > 0 ? oppFaces / (oppPot + oppFaces) : 0;
     return {
       type: 'raise',
-      size: texture.wet > 0.55 ? '加注到 3 倍左右' : '加注到 2.5 倍左右',
-      reason: `胜率 ${pct(equity)} 远超赔率门槛 ${pct(needEquity)}，加注榨取价值`
+      size: `加注到 ${target}（${mult} 倍）`,
+      reason: `胜率 ${pct(equity)} 超出赔率门槛 ${pct(needEquity)} 约 `
+        + `${pct(eqAdj - needEquity)}，应加注榨取价值。`
+        + `加注到 ${target} 后对手需再补 ${oppFaces}，他的门槛升到 ${pct(oppNeed)}`
+        + `${texture.wet > 0.55 ? '；牌面潮湿，用 3 倍收保护费' : ''}`
     };
   }
   if (eqAdj > needEquity + 0.02) {
-    return { type: 'call', reason: `胜率 ${pct(equity)} 高于赔率门槛 ${pct(needEquity)}，跟注获利` };
+    return {
+      type: 'call',
+      reason: `胜率 ${pct(equity)} 高于赔率门槛 ${pct(needEquity)}，`
+        + `跟注 ${toCall} 的期望值约 ${callEV >= 0 ? '+' : ''}${callEV.toFixed(0)} 筹码`
+        + `（${pct(equity)} × ${pot + toCall} − ${toCall}）`
+    };
   }
   if (draws.has && effectiveEquity > needEquity + 0.02) {
     return {
@@ -603,13 +629,31 @@ function baselineAdvice(c) {
         + `${pct(effectiveEquity)}，跟注可行`
     };
   }
-  if (eqAdj > needEquity - 0.03) {
-    return { type: 'call', reason: `胜率 ${pct(equity)} 与门槛 ${pct(needEquity)} 持平，跟弃皆可` };
+  // 边际区间从 3 个点放宽到 6 个点：这一段跟注的实际 EV 接近 0，
+  // 但跟注能保护范围、避免被小注反复剥削，长期优于一律弃牌
+  if (eqAdj > needEquity - 0.06) {
+    return {
+      type: 'call',
+      reason: `胜率 ${pct(equity)} 与门槛 ${pct(needEquity)} 接近，`
+        + `跟注 EV 约 ${callEV >= 0 ? '+' : ''}${callEV.toFixed(0)} 筹码。`
+        + '这段边际区间倾向跟注：一律弃牌会让对手用小注无限剥削你'
+    };
+  }
+  // 面对小注（不到 1/3 池）时进一步放宽：赔率好，弃牌代价大
+  if (toCall <= pot * 0.34 && eqAdj > needEquity - 0.10) {
+    return {
+      type: 'call',
+      reason: `对手只下了 ${Math.round(toCall / pot * 100)}% 底池，`
+        + `门槛低至 ${pct(needEquity)}。你的 ${pct(equity)} 虽略低，`
+        + '但面对小注过度弃牌是常见漏洞，这里应该防守'
+    };
   }
   return {
     type: 'fold',
     reason: `胜率 ${pct(equity)} 低于赔率门槛 ${pct(needEquity)}`
-      + `${opponents > 1 ? `（${opponents} 家对手需额外折价）` : ''}，跟注长期亏损`
+      + `，差 ${pct(needEquity - eqAdj)}`
+      + `${opponents > 1 ? `（${opponents} 家对手已折价 ${pct(penalty)}）` : ''}，`
+      + `跟注 EV 约 ${callEV.toFixed(0)} 筹码，长期亏损`
   };
 }
 
