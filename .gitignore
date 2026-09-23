@@ -2,6 +2,10 @@
 _tmp_*.js
 _dbg*.js
 
+# 策略参考输入材料（本地保留，不进仓库）
+判断.txt
+职业级AI.txt
+
 # 测试截图与浏览器自动化产物
 .playwright-mcp/
 *.png

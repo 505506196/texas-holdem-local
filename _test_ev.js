@@ -5,7 +5,7 @@ const path = require('path');
 global.window = {};
 global.setTimeout = fn => { fn(); return 0; };
 
-const src = ['cards.js', 'game.js', 'ai.js', 'range.js', 'review.js']
+const src = ['cards.js', 'preflop.js', 'strategy.js', 'game.js', 'ai.js', 'range.js', 'review.js']
   .map(f => fs.readFileSync(path.join(__dirname, 'js', f), 'utf8')).join('\n');
 eval(src + `
   globalThis.buildEvTable = buildEvTable;

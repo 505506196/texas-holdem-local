@@ -688,7 +688,10 @@ function reviewDecision(snap, history) {
   const effectiveEquity = Math.min(0.97, equity + impliedBonus);
 
   const canRaise = snap.legal.some(a => a.type === 'raise' || a.type === 'bet');
-  const inPosition = ['按钮位', '关煞位', '后位'].includes(snap.position);
+  // 位置由引擎直接给出布尔值，不再靠中文串匹配（旧写法漏了很多位置情形）
+  const inPosition = snap.isInPosition != null
+    ? snap.isInPosition
+    : ['按钮位', '关煞位', '后位'].includes(snap.position);
 
   // 线路特征：对手本街/上街的行为模式
   const line = analyzeLine(snap, history);

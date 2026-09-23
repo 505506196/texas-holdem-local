@@ -190,8 +190,10 @@ class Game {
     // 原来回退成 actingIndex = bbIndex，但大盲已 all-in、没有合法动作，
     // 状态机就此卡死、底池留在池里无人结算。改为直接发完公共牌进摊牌。
     if (this.actingIndex === -1) {
+      // 盲注吃光所有筹码、全员被迫全下：同步跑完公共牌并结算。
+      // 不用 setTimeout —— 异步回调可能被宿主环境清掉而导致死锁。
       this.emit('turn', { index: -1, player: null });
-      setTimeout(() => this.runOutBoard(), 400);
+      this.runOutBoard();
     }
   }
 
@@ -293,6 +295,10 @@ class Game {
         .filter(h => h.street === this.street)
         .map(h => ({ id: h.playerId, action: h.action })),
       position: this.positionLabel(index),
+      // 标准位置代号（BTN/CO/MP/UTG/SB/BB）与「是否有位置」布尔值。
+      // review.js 原先靠中文串匹配判断位置，很脆；这里由引擎直接给结论。
+      seat: this.seatCode(index),
+      isInPosition: this.isInPosition(index),
       legal: this.legalActions(index)
     };
 
@@ -377,6 +383,24 @@ class Game {
     }
     if (after === 0) return '关煞位';
     return after <= Math.floor(alive.length / 3) ? '后位' : '前位';
+  }
+
+  // 标准位置代号，用在座位编号里在座人数（不含已淘汰）
+  seatCode(index) {
+    const alive = this.players.filter(p => !p.sittingOut);
+    const n = alive.length;
+    // 把座位下标压缩到「在座」序列，让 seatToPosition 按实际人数计算
+    const aliveIdx = alive.findIndex(p => p.id === index);
+    const btnAliveIdx = alive.findIndex(p => p.id === this.buttonIndex);
+    if (aliveIdx < 0 || btnAliveIdx < 0) return 'UTG';
+    return seatToPosition(aliveIdx, btnAliveIdx, n);
+  }
+
+  // 是否有位置：翻后行动越靠后越有利。按钮位永远有位置，
+  // 其余看到按钮的距离——同一手里最后行动的一方即为「有位置」。
+  isInPosition(index) {
+    const code = this.seatCode(index);
+    return code === 'BTN' || code === 'CO';
   }
 
   moveChips(p, amount) {

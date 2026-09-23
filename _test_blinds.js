@@ -6,7 +6,7 @@ global.window = {};
 let pending = [];
 global.setTimeout = fn => { pending.push(fn); return 0; };
 
-const src = ['cards.js', 'game.js', 'ai.js']
+const src = ['cards.js', 'preflop.js', 'strategy.js', 'game.js', 'ai.js']
   .map(f => fs.readFileSync(path.join(__dirname, 'js', f), 'utf8')).join('\n');
 eval(src + `
   globalThis.Game = Game;

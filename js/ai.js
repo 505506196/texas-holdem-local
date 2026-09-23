@@ -134,60 +134,112 @@ function decideAction(game, player) {
   const rand = Math.random();
   const bluffing = rand < persona.bluff && canRaise;
 
-  // ---- 翻牌前 ----
+  // ---- 翻牌前：按位置标准范围决策 ----
+  // 旧版用单一 Chen 门槛，UTG 和 BTN 开牌一样宽，这是最不真实的地方。
+  // 现在按座位取标准范围百分比，再按性格调制。
   if (game.street === 'preflop') {
-    const score = chenScore(player.hole);
-    const isBB = player.id === game.bbIndex;
+    const seat = game.seatCode(player.id);
+    const notation = handNotation(player.hole);
+    const base = POSITION_RANGES[seat] || POSITION_RANGES.MP;
+
+    // 已有人加注过 ⇒ 用 3bet/跟注范围；无人加注 ⇒ 用开池范围
+    const raised = game.preflopAggressor >= 0 && game.preflopAggressor !== player.id;
 
     if (toCall === 0) {
-      if (canRaise && (score >= persona.openThreshold || bluffing)) {
+      // 无人下注（或只有盲注）：按开池范围决定进不进
+      const openPct = adjustRangeForPersona(base.open, player.persona, 'open');
+      const inOpen = openPct > 0 && topPercentRange(openPct).has(notation);
+      if (canRaise && (inOpen || bluffing)) {
         return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, strength) };
       }
       return { type: 'check' };
     }
-    // 面对下注
-    if (score >= persona.openThreshold + 2 && canRaise && rand < persona.aggression) {
+
+    // 面对加注：强牌 3bet，中等牌跟注，其余弃牌
+    const threeBetPct = adjustRangeForPersona(base.threeBet, player.persona, 'threeBet');
+    const callPct = adjustRangeForPersona(base.call, player.persona, 'call');
+    const inThreeBet = topPercentRange(threeBetPct).has(notation);
+    const inCall = topPercentRange(callPct).has(notation);
+
+    if (inThreeBet && canRaise && rand < persona.aggression + 0.25) {
       return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, strength) };
     }
-    // 大盲位有折扣，跟注门槛放宽
-    const threshold = isBB ? persona.callThreshold - 1 : persona.callThreshold;
-    if (score >= threshold && toCall <= player.stack * 0.35) {
-      return { type: 'call' };
-    }
-    if (bluffing && score >= threshold - 1) return { type: 'call' };
+    // 跟注要同时满足范围与筹码占比（避免小牌为跟注押上过多筹码）
+    if (inCall && toCall <= player.stack * 0.4) return { type: 'call' };
+    if (bluffing && inCall) return { type: 'call' };
     return { type: 'fold' };
   }
 
   // ---- 翻牌后 ----
+  const spr = sprBucket(player.stack, game.pot);
+  const board5 = classifyBoard(game.board);
+  const isRiver = game.street === 'river';
+
+  // SPR<1 极短筹码：只考虑全下或弃牌，不做半吊子下注
+  if (spr.key === 'short') {
+    if (equity > 0.5 && canRaise) {
+      return { type: 'allin', target: raiseAct.max };
+    }
+    if (toCall === 0) return { type: 'check' };
+    if (equity > potOdds + 0.02) return { type: 'call' };
+    return { type: 'fold' };
+  }
+
   if (toCall === 0) {
-    // 无人下注：强牌或诈唬时主动下注
-    if (canRaise && (equity > 0.55 || bluffing) && rand < persona.aggression + equity * 0.4) {
-      return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, equity) };
+    // 无人下注：按牌面分类的持续下注频率决定，强牌价值、空气按频率诈唬
+    const cbet = board5.cbetFreq;
+    if (canRaise && equity > 0.6 && rand < persona.aggression + 0.35) {
+      // 强牌价值下注，尺度跟牌面走
+      return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, equity, board5) };
+    }
+    // 河牌极化：中间牌一律过牌，不做无意义下注
+    if (!isRiver && canRaise && equity > 0.4 && rand < cbet * persona.aggression) {
+      return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, equity, board5) };
+    }
+    // 空气 + 诈唬性格：低频诈唬（河牌只在有诈唬倾向时）
+    if (canRaise && bluffing && equity < 0.35 && rand < cbet) {
+      return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, equity, board5) };
     }
     return { type: 'check' };
   }
 
-  // 面对下注：用胜率对比底池赔率
+  // 面对下注：强牌加注榨取价值
   if (equity > 0.78 && canRaise && rand < persona.aggression + 0.2) {
-    return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, equity) };
+    return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, equity, board5) };
   }
+  // 胜率高于底池赔率就跟
   if (equity > potOdds + 0.06) return { type: 'call' };
+  // MDF 防守：面对小注（≤半池）时，即使胜率略低于赔率也要防守一部分，
+  // 否则会被对手用任意两张无风险剥削。用随机命中率贴合 MDF 的防守频率。
+  const betRatio = game.pot > 0 ? toCall / game.pot : 1;
+  if (betRatio <= 0.5 && equity > potOdds - 0.08) {
+    const defendFreq = mdf(game.pot, toCall);
+    if (rand < defendFreq) return { type: 'call' };
+  }
   if (bluffing && equity > potOdds - 0.08) return { type: 'call' };
-  // 便宜的跟注（不到底池 8%）偶尔看一张
-  if (toCall <= game.pot * 0.08 && equity > 0.25) return { type: 'call' };
   return { type: 'fold' };
 }
 
-// 下注尺度：按底池比例，强牌下大注
-function sizeRaise(game, player, raiseAct, persona, strength) {
+// 下注尺度：以牌面标准尺度为基准，再按牌力微调
+// board5 由 classifyBoard 给出，含该牌面的建议尺度（湿面大、成对面小）
+function sizeRaise(game, player, raiseAct, persona, strength, board5) {
   const pot = game.pot;
   const toCall = game.currentBet - player.bet;
+
+  // 基准尺度：翻前或无牌面信息时用牌力档，翻后用牌面标准尺度
   let ratio;
-  if (strength > 0.9) ratio = 0.85;
-  else if (strength > 0.7) ratio = 0.66;
-  else if (strength > 0.5) ratio = 0.5;
-  else ratio = 0.4;
-  ratio *= 0.85 + Math.random() * 0.4;          // 加点随机，避免尺度可读
+  if (board5 && board5.size) {
+    ratio = board5.size;
+    // 超强牌在湿面加码收保护费，弱牌/诈唬略缩
+    if (strength > 0.85) ratio = Math.min(1, ratio + 0.15);
+    else if (strength < 0.4) ratio = Math.max(0.33, ratio - 0.1);
+  } else {
+    if (strength > 0.9) ratio = 0.85;
+    else if (strength > 0.7) ratio = 0.66;
+    else if (strength > 0.5) ratio = 0.5;
+    else ratio = 0.4;
+  }
+  ratio *= 0.85 + Math.random() * 0.3;          // 加点随机，避免尺度可读
 
   let target = game.currentBet + Math.round((pot + toCall) * ratio);
   target = Math.max(raiseAct.min, Math.min(raiseAct.max, target));

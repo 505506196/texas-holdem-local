@@ -9,7 +9,7 @@ global.setTimeout = (fn) => { pending.push(fn); return 0; };
 
 // 三个源文件拼接后一次 eval，末尾显式导出到 global
 // （CJS 模块作用域下 class/const 不会自动挂到 global）
-const sources = ['cards.js', 'game.js', 'ai.js']
+const sources = ['cards.js', 'preflop.js', 'strategy.js', 'game.js', 'ai.js']
   .map(f => fs.readFileSync(path.join(__dirname, 'js', f), 'utf8'))
   .join('\n');
 eval(sources + `
@@ -61,9 +61,9 @@ for (let g = 0; g < NUM_GAMES; g++) {
   while (!over) {
     // 固定盲注下双方势均力敌可能长期僵持，放宽上限并单独计数
     if (++handGuard > 5000) { longGames++; break; }
+    pending = [];   // 必须在 startHand 前清，否则会清掉 postBlinds 注册的全下结算回调
     if (!game.startHand()) break;
     handsPlayed++;
-    pending = [];
 
     // 跑完这一手
     let actGuard = 0;
