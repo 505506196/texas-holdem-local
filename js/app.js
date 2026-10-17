@@ -614,6 +614,9 @@ function showResult(winners, showCards) {
     b.classList.toggle('disabled', !hasDecisions);
   }
 
+  // 我弃牌并主动「跳过本手」，说明不关心这手——直接进下一手，不弹操作条
+  if (fastForward) { closePanels(); nextHand(); return; }
+
   // 结果内容已备好，但不主动展开侧栏——先给底部轻量条，由用户决定看不看
   closePanels();
   showHandEndBar(merged, delta, deltaText, showCards);
