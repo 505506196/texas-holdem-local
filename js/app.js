@@ -11,6 +11,8 @@ let winnerIds = [];
 let aiTimer = null;
 let stackAtHandStart = 0;      // 本手开局时我的筹码，用于算本手盈亏
 let fastForward = false;       // 我弃牌后快进本手，跳过 AI 思考延时
+let seatEls = [];              // 座位 DOM 缓存，索引对齐 game.players
+let seatLayoutKey = '';        // 人数变了才重排座位
 
 const $ = id => document.getElementById(id);
 
@@ -112,6 +114,8 @@ function startGame() {
     onEvent: handleEvent
   });
 
+  // 新开一局必须重建座位：人数可能没变，但座位绑的是上一局的玩家状态
+  seatLayoutKey = '';
   $('setup-screen').classList.add('hidden');
   $('game-screen').classList.remove('hidden');
   $('logCurrent').innerHTML = '';
@@ -155,6 +159,7 @@ function handleEvent(ev) {
     case 'handEnd':
       revealAll = ev.showCards;
       winnerIds = ev.winners.map(w => w.player.id);
+      hideActions();          // 本手已结束，动作条一律收起，不依赖按钮自己清
       render();
       setTimeout(() => showResult(ev.winners, ev.showCards), fastForward ? 120 : 600);
       break;
@@ -241,16 +246,38 @@ function render() {
   renderSeats();
 }
 
+// 牌元素带入场动画，整块重建就会让全桌牌跟着行动切换一起重播——看起来就是一直在闪。
+// 所以牌按「牌面身份」复用：位置上的牌没变就原地留着，只有真的换了牌才重建。
+function cardKey(card, faceUp) {
+  if (!card) return 'ph';
+  return faceUp ? `${card.label}${card.suit}` : 'back';
+}
+
+function syncCards(box, specs) {
+  for (let i = 0; i < specs.length; i++) {
+    const cur = box.children[i];
+    if (cur && cur.dataset.k === specs[i].k) continue;
+    const el = specs[i].make();
+    el.dataset.k = specs[i].k;
+    if (cur) box.replaceChild(el, cur);
+    else box.appendChild(el);
+  }
+  while (box.children.length > specs.length) box.removeChild(box.lastChild);
+}
+
+function placeholderEl() {
+  const ph = document.createElement('div');
+  ph.className = 'card back dim';
+  return ph;
+}
+
 function renderBoard() {
-  const box = $('board');
-  box.innerHTML = '';
-  for (const c of game.board) box.appendChild(cardEl(c));
+  const specs = game.board.map(c => ({ k: cardKey(c, true), make: () => cardEl(c) }));
   // 未发出的公共牌用占位保持布局稳定
   for (let i = game.board.length; i < 5; i++) {
-    const ph = document.createElement('div');
-    ph.className = 'card back dim';
-    box.appendChild(ph);
+    specs.push({ k: 'ph', make: placeholderEl });
   }
+  syncCards($('board'), specs);
 }
 
 function cardEl(card, small) {
@@ -270,11 +297,31 @@ function backEl(small) {
   return el;
 }
 
-// 座位沿椭圆分布，人类固定在正下方
+// 内容没变就不写回 DOM，省掉无谓的重排
+function setText(el, txt) {
+  if (el && el.textContent !== txt) el.textContent = txt;
+}
+
+// 用项目统一的 .hidden 控制显隐。不用 [hidden] 属性：这些元素自带 display 值，
+// 会盖掉浏览器对 [hidden] 的默认样式
+function setShown(el, shown) {
+  if (el) el.classList.toggle('hidden', !shown);
+}
+
+// 座位沿椭圆分布，人类固定在正下方。
+// 骨架只在人数变化时建一次，之后每次行动只改文本和 class，
+// 轮转靠 .acting 高亮框平滑过渡，牌面一概不动。
 function renderSeats() {
-  const box = $('seats');
-  box.innerHTML = '';
   const n = game.players.length;
+  if (seatLayoutKey !== String(n)) buildSeats(n);
+  game.players.forEach((p, i) => updateSeat(p, i, seatEls[i]));
+}
+
+function buildSeats(n) {
+  const box = $('seats');
+  seatLayoutKey = String(n);
+  seatEls = [];
+  box.innerHTML = '';
   // 人多时座位要缩小并外扩，否则会互相重叠
   box.className = 'seats seats-' + (n >= 7 ? 'lg' : n >= 5 ? 'md' : 'sm');
   const rx = n >= 7 ? 44 : n >= 5 ? 40 : 37;
@@ -288,68 +335,80 @@ function renderSeats() {
     const y = 50 + ry * Math.sin(rad);
 
     const seat = document.createElement('div');
-    seat.className = 'seat';
-    if (y < 40) seat.classList.add('top');
-    if (i === game.actingIndex && !game.handOver) seat.classList.add('acting');
-    if (p.folded || p.sittingOut) seat.classList.add('folded');
-    if (winnerIds.includes(p.id)) seat.classList.add('winner');
-    if (p.isHuman) seat.classList.add('me');
+    seat.className = 'seat' + (y < 40 ? ' top' : '') + (p.isHuman ? ' me' : '');
     seat.style.left = x + '%';
     seat.style.top = y + '%';
-
+    // 浮动元素（位置标记、ALL IN、下注筹码）常驻骨架，用 hidden 控制显隐，
+    // 这样它们的出现不会连带把整个座位重建一遍
     seat.innerHTML = `
-      <div class="nm">${p.name}</div>
-      <div class="st">${p.sittingOut ? '已淘汰' : p.stack}</div>
-      <div class="act">${p.lastAction || ''}</div>
+      <div class="pos-mark hidden"></div>
+      <div class="allin-tag hidden">ALL IN</div>
+      <div class="nm"></div>
+      <div class="st"></div>
+      <div class="act"></div>
       <div class="hole"></div>
       <div class="made"></div>
-    `;
-
-    // 位置标记做成独立圆牌挂在座位角上，比挤在名字里更醒目
-    const posMark = i === game.buttonIndex ? { cls: 'btn-d', txt: 'D' }
-      : i === game.sbIndex ? { cls: 'sb', txt: 'SB' }
-      : i === game.bbIndex ? { cls: 'bb', txt: 'BB' }
-      : null;
-    if (posMark && !p.sittingOut) {
-      const dealer = document.createElement('div');
-      dealer.className = 'pos-mark ' + posMark.cls;
-      dealer.textContent = posMark.txt;
-      seat.appendChild(dealer);
-    }
-    if (p.allIn) {
-      const tag = document.createElement('div');
-      tag.className = 'allin-tag';
-      tag.textContent = 'ALL IN';
-      seat.appendChild(tag);
-    }
-
-    // 手牌：自己始终可见，对手仅摊牌时可见
-    const holeBox = seat.querySelector('.hole');
-    if (p.hole.length && !p.sittingOut) {
-      const visible = p.isHuman || (revealAll && !p.folded);
-      for (const c of p.hole) {
-        holeBox.appendChild(visible ? cardEl(c, true) : backEl(true));
-      }
-    }
-
-    // 摊牌时显示成手牌型
-    if (revealAll && p.handResult && !p.folded) {
-      seat.querySelector('.made').textContent = describeHand(p.handResult);
-    }
-
-    // 本轮下注：带筹码图形，并标出相对当前最高注的状态
-    if (p.bet > 0) {
-      const chip = document.createElement('div');
-      chip.className = 'bet-chip';
-      const behind = game.currentBet - p.bet;
-      if (p.bet >= game.currentBet && game.currentBet > 0) chip.classList.add('matched');
-      chip.innerHTML = `<span class="chip-dot"></span><span class="chip-amt">${p.bet}</span>`
-        + (behind > 0 && !p.folded && !p.allIn ? `<span class="chip-behind">差 ${behind}</span>` : '');
-      seat.appendChild(chip);
-    }
-
+      <div class="bet-chip hidden">
+        <span class="chip-dot"></span><span class="chip-amt"></span><span class="chip-behind hidden"></span>
+      </div>`;
     box.appendChild(seat);
+    seatEls.push(seat);
   });
+}
+
+function updateSeat(p, i, seat) {
+  if (!seat) return;
+
+  seat.classList.toggle('acting', i === game.actingIndex && !game.handOver);
+  seat.classList.toggle('folded', p.folded || p.sittingOut);
+  seat.classList.toggle('winner', winnerIds.includes(p.id));
+
+  setText(seat.querySelector('.nm'), p.name);
+  setText(seat.querySelector('.st'), p.sittingOut ? '已淘汰' : String(p.stack));
+  setText(seat.querySelector('.act'), p.lastAction || '');
+  // 摊牌时显示成手牌型
+  setText(seat.querySelector('.made'),
+    revealAll && p.handResult && !p.folded ? describeHand(p.handResult) : '');
+
+  // 位置标记做成独立圆牌挂在座位角上，比挤在名字里更醒目
+  const posMark = i === game.buttonIndex ? { cls: 'btn-d', txt: 'D' }
+    : i === game.sbIndex ? { cls: 'sb', txt: 'SB' }
+    : i === game.bbIndex ? { cls: 'bb', txt: 'BB' }
+    : null;
+  const mark = seat.querySelector('.pos-mark');
+  const showMark = !!posMark && !p.sittingOut;
+  if (showMark) {
+    mark.className = 'pos-mark ' + posMark.cls;
+    setText(mark, posMark.txt);
+  }
+  setShown(mark, showMark);
+
+  setShown(seat.querySelector('.allin-tag'), p.allIn);
+
+  // 手牌：自己始终可见，对手仅摊牌时可见
+  const holeBox = seat.querySelector('.hole');
+  if (p.hole.length && !p.sittingOut) {
+    const visible = p.isHuman || (revealAll && !p.folded);
+    syncCards(holeBox, p.hole.map(c => ({
+      k: cardKey(c, visible),
+      make: () => (visible ? cardEl(c, true) : backEl(true))
+    })));
+  } else {
+    syncCards(holeBox, []);
+  }
+
+  // 本轮下注：带筹码图形，并标出相对当前最高注的状态
+  const chip = seat.querySelector('.bet-chip');
+  setShown(chip, p.bet > 0);
+  if (p.bet > 0) {
+    chip.classList.toggle('matched', p.bet >= game.currentBet && game.currentBet > 0);
+    setText(chip.querySelector('.chip-amt'), String(p.bet));
+    const behind = game.currentBet - p.bet;
+    const bh = chip.querySelector('.chip-behind');
+    const showBehind = behind > 0 && !p.folded && !p.allIn;
+    if (showBehind) setText(bh, `差 ${behind}`);
+    setShown(bh, showBehind);
+  }
 }
 
 // 日志分两段：当前手全量展示在上，历史手折叠成灰色摘要在下

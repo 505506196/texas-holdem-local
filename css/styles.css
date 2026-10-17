@@ -328,9 +328,27 @@ body {
 .seats-lg .seat .act { font-size: 9px; min-height: 12px; }
 .seats-lg .seat .made { font-size: 9px; }
 .seats-lg .seat .hole { gap: 3px; margin-top: 4px; }
+/* 行动焦点靠这个高亮框在座位间移动来表达。
+   座位 DOM 是复用的，所以边框和光晕能平滑过渡，不会整桌重绘 */
 .seat.acting {
   border-color: var(--gold);
-  box-shadow: 0 0 0 2px rgba(232, 194, 106, .35), 0 0 22px rgba(232, 194, 106, .25);
+  box-shadow: 0 0 0 2px rgba(232, 194, 106, .45), 0 0 26px rgba(232, 194, 106, .3);
+  transform: translate(-50%, -50%) scale(1.04);
+  z-index: 4;
+}
+/* 轮到谁一眼可见：缓慢呼吸，幅度压得很小，不抢牌面注意力 */
+.seat.acting::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 15px;
+  border: 1px solid rgba(232, 194, 106, .5);
+  pointer-events: none;
+  animation: actingBreath 2.2s ease-in-out infinite;
+}
+@keyframes actingBreath {
+  0%, 100% { opacity: .15; transform: scale(1); }
+  50%      { opacity: .7;  transform: scale(1.025); }
 }
 .seat.folded { opacity: .45; }
 .seat.winner {
