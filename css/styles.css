@@ -634,22 +634,29 @@ body {
 
 /* ---------- 本手结束操作条 ---------- */
 .handend-bar {
+  position: relative;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 14px;
   padding: 12px 18px 16px;
   background: rgba(12, 18, 22, .95);
   border-top: 1px solid #263038;
 }
 
+/* 摘要浮在左侧，不挤占按钮，让按钮稳稳落在屏幕中间 */
 .he-info {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 10px;
   font-size: 14px;
   flex-wrap: wrap;
+  max-width: 42%;
 }
 .he-who { color: var(--muted); }
 .he-who.win { color: var(--green); font-weight: 600; }
@@ -1041,6 +1048,15 @@ button.disabled, button:disabled {
   .log-title { padding: 6px 12px 4px; }
   .log-lines { padding: 4px 12px 8px; }
   .log-lines .street { margin-top: 5px; padding-top: 4px; }
+
+  /* 窄屏空间不够绝对定位，摘要回到流内、上下堆叠，按钮仍居中 */
+  .handend-bar { flex-direction: column; gap: 8px; }
+  .he-info {
+    position: static;
+    transform: none;
+    max-width: 100%;
+    justify-content: center;
+  }
 
   /* 侧栏在窄屏改为底部抽屉铺满宽度 */
   .side-panel, .side-panel.wide-panel {

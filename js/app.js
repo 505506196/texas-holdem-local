@@ -31,6 +31,7 @@ function initSetup() {
   $('btnStart').onclick = startGame;
   $('btnMenu').onclick = () => {
     if (aiTimer) clearTimeout(aiTimer);
+    clearHeCountdown();
     $('game-screen').classList.add('hidden');
     $('setup-screen').classList.remove('hidden');
     closePanels();
@@ -38,6 +39,7 @@ function initSetup() {
   };
 
   const goNext = () => {
+    clearHeCountdown();
     closePanels();
     $('handEndBar').classList.add('hidden');
     $('skipBar').classList.add('hidden');
@@ -124,7 +126,26 @@ function startGame() {
   nextHand();
 }
 
+// 本手结束后「下一手」的自动倒计时：不看复盘就 10 秒后自动进入下一手
+let heTimer = null;
+function clearHeCountdown() {
+  if (heTimer) { clearInterval(heTimer); heTimer = null; }
+  $('btnHeNext').textContent = '下一手';
+}
+function startHeCountdown(sec, onDone) {
+  clearHeCountdown();
+  let left = sec;
+  const btn = $('btnHeNext');
+  btn.textContent = `下一手 (${left})`;
+  heTimer = setInterval(() => {
+    left--;
+    if (left <= 0) { clearHeCountdown(); onDone(); }
+    else btn.textContent = `下一手 (${left})`;
+  }, 1000);
+}
+
 function nextHand() {
+  clearHeCountdown();
   revealAll = false;
   winnerIds = [];
   fastForward = false;
@@ -613,10 +634,19 @@ function showHandEndBar(merged, delta, deltaText, showCards) {
     + (showCards ? '' : '<span class="he-tag">未摊牌</span>');
 
   $('handEndBar').classList.remove('hidden');
+
+  // 默认 10 秒后自动进下一手；点「查看复盘」或「下一手」会取消
+  startHeCountdown(10, () => {
+    closePanels();
+    $('handEndBar').classList.add('hidden');
+    $('skipBar').classList.add('hidden');
+    nextHand();
+  });
 }
 
 // ---------------- 复盘面板 ----------------
 function showReview() {
+  clearHeCountdown();
   const body = $('reviewBody');
   body.innerHTML = '<p class="rv-empty">正在模拟计算各决策点胜率，请稍候…</p>';
   $('result-panel').classList.add('hidden');
