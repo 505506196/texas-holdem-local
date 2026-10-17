@@ -77,7 +77,12 @@ for (let i = 0; i < r.logs.length; i++) {
 // ---- 奇数底池：余数必须分掉，不能蒸发 ----
 function oddPot() {
   const players = [{ name: 'A' }, { name: 'B' }, { name: 'C' }];
-  const g = new Game({ players, smallBlind: 10, bigBlind: 20, startStack: 1000, onEvent: () => {} });
+  // 这个用例靠直接覆写 totalBet 制造「三人投入完全相同」，
+  // 所以必须关掉前注——否则大盲的投入里有一截是死钱，三人就不再对等了
+  const g = new Game({
+    players, smallBlind: 10, bigBlind: 20, startStack: 1000,
+    anteMultiple: 0, onEvent: () => {}
+  });
   g.startHand();
   for (const p of g.players) { p.folded = false; p.allIn = false; }
   // 三人牌力完全相同，底池 100 无法整除

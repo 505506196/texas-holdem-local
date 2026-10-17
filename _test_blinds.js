@@ -21,11 +21,12 @@ const check = (name, cond, extra) => {
   else { fail++; console.log(`  FAIL ${name}${extra ? '\n       ' + extra : ''}`); }
 };
 
-function mkGame(interval) {
+// 本文件只验证涨盲，关掉前注免得底池金额里混进第三个变量（前注另有专项测试）
+function mkGame(interval, anteMultiple = 0) {
   return new Game({
     players: [{ name: '我' }, { name: 'A' }, { name: 'B' }],
     smallBlind: 10, bigBlind: 20, startStack: 1000000,
-    blindInterval: interval, onEvent: () => {}
+    blindInterval: interval, anteMultiple, onEvent: () => {}
   });
 }
 

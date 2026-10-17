@@ -15,6 +15,11 @@ class Game {
     // 每隔多少手把盲注翻一倍；0 表示固定盲注不涨
     this.blindInterval = config.blindInterval != null ? config.blindInterval : 10;
     this.blindLevel = 1;
+    // 大盲前注：大盲位额外付 N 倍大盲作为全桌前注，开局就垫进底池。
+    // 这笔钱不计入 bet，别人无需跟它，但会抬高翻前底池、压低隐含赔率。
+    // 0 表示不收前注。
+    this.anteMultiple = config.anteMultiple != null ? config.anteMultiple : 1;
+    this.ante = this.bigBlind * this.anteMultiple;
     this.startStack = config.startStack || 1000;
     this.onEvent = config.onEvent || (() => {});
 
@@ -41,6 +46,7 @@ class Game {
     this.board = [];
     this.deck = [];
     this.pot = 0;
+    this.deadAnte = 0;
     this.currentBet = 0;
     this.minRaise = this.bigBlind;
     this.actingIndex = -1;
@@ -95,12 +101,14 @@ class Game {
         const mult = Math.pow(2, level - 1);
         this.smallBlind = this.baseSmallBlind * mult;
         this.bigBlind = this.baseBigBlind * mult;
+        this.ante = this.bigBlind * this.anteMultiple;
         this.addLog(
-          `▲ 盲注升至第 ${level} 级：${this.smallBlind} / ${this.bigBlind}`,
+          `▲ 盲注升至第 ${level} 级：${this.smallBlind} / ${this.bigBlind}`
+          + (this.ante > 0 ? `（前注 ${this.ante}）` : ''),
           'blind'
         );
         this.emit('blindUp', {
-          level, smallBlind: this.smallBlind, bigBlind: this.bigBlind
+          level, smallBlind: this.smallBlind, bigBlind: this.bigBlind, ante: this.ante
         });
       }
     }
@@ -109,6 +117,7 @@ class Game {
     this.board = [];
     this.pot = 0;
     this.pots = [];
+    this.deadAnte = 0;
     this.currentBet = 0;
     this.minRaise = this.bigBlind;
     this.handOver = false;
@@ -180,7 +189,22 @@ class Game {
     this.bbIndex = bbIndex;
 
     this.forceBet(sbIndex, this.smallBlind, '小盲');
-    this.forceBet(bbIndex, this.bigBlind, '大盲');
+    const bbPut = this.forceBet(bbIndex, this.bigBlind, '大盲');
+
+    // 大盲前注在盲注之后扣，且只能用付完大盲的余额。
+    // 锦标赛规则是前注优先，但那样短码会出现「没下大盲就全下」的局面，
+    // 对练习没有价值，反而容易把状态机推进无人可行动的死角。
+    if (this.ante > 0) {
+      const bb = this.players[bbIndex];
+      const anteAmt = Math.min(this.ante, bb.stack);
+      if (anteAmt > 0) {
+        this.forceBet(bbIndex, anteAmt, '前注', false);
+        this.deadAnte = anteAmt;
+        // 座位上两笔钱都要看得见，否则只剩「前注 20」会让人以为他没下大盲
+        bb.lastAction = `大盲 ${bbPut} · 前注 ${anteAmt}`
+          + (bb.allIn ? '（全下）' : '');
+      }
+    }
 
     this.currentBet = Math.max(...this.players.map(p => p.bet));
     this.minRaise = this.bigBlind;
@@ -210,16 +234,19 @@ class Game {
     this.finishHand();
   }
 
-  forceBet(index, amount, label) {
+  forceBet(index, amount, label, countAsBet = true) {
     const p = this.players[index];
     const put = Math.min(amount, p.stack);
+    if (put <= 0) return 0;
     p.stack -= put;
-    p.bet += put;
+    // 前注不算本轮下注额，否则别人就得跟它，就不是前注了
+    if (countAsBet) p.bet += put;
     p.totalBet += put;
     this.pot += put;
     if (p.stack === 0) p.allIn = true;
     p.lastAction = `${label} ${put}`;
     this.addLog(`${p.name} 下${label} ${put}${p.allIn ? '（全下）' : ''}`);
+    return put;
   }
 
   // ---------------- 玩家可用动作 ----------------
@@ -543,19 +570,25 @@ class Game {
 
   // 按各玩家总投入切分主池与边池
   buildSidePots(contenders) {
+    // 前注是全桌死钱，不是大盲的个人投入。若按个人投入分层，
+    // 全桌 limp 时没人跟到「大盲注＋前注」那档，这笔钱会原样退还给大盲，等于白收。
+    // 所以先把前注从大盲投入里剥出来，分完层再整笔并进主池。
+    const dead = this.deadAnte || 0;
+    const invested = p => p.totalBet - (dead > 0 && p.id === this.bbIndex ? dead : 0);
+
     // 所有下注过的玩家（含已弃牌的）都要贡献筹码
-    const contributors = this.players.filter(p => p.totalBet > 0);
-    const levels = [...new Set(contenders.map(p => p.totalBet))].sort((a, b) => a - b);
+    const contributors = this.players.filter(p => invested(p) > 0);
+    const levels = [...new Set(contenders.map(invested))].sort((a, b) => a - b);
 
     const pots = [];
     let prev = 0;
     for (const level of levels) {
       let amount = 0;
       for (const p of contributors) {
-        amount += Math.max(0, Math.min(p.totalBet, level) - prev);
+        amount += Math.max(0, Math.min(invested(p), level) - prev);
       }
       // 只有投入达到该档位且未弃牌的人有资格
-      const eligible = contenders.filter(p => p.totalBet >= level);
+      const eligible = contenders.filter(p => invested(p) >= level);
       if (amount > 0) {
         pots.push({
           amount,
@@ -564,6 +597,16 @@ class Game {
         });
       }
       prev = level;
+    }
+
+    // 弃牌者的投入可能高过所有在局玩家的最高档（例如大盲弃牌、摊牌的全是短码全下），
+    // 这部分不并入就会凭空蒸发。连同前注一起归主池，由主池赢家争。
+    const covered = levels.length ? levels[levels.length - 1] : 0;
+    let orphan = dead;
+    for (const p of contributors) orphan += Math.max(0, invested(p) - covered);
+    if (orphan > 0) {
+      if (pots.length) pots[0].amount += orphan;
+      else pots.push({ amount: orphan, eligible: contenders, name: '底池' });
     }
     return pots;
   }

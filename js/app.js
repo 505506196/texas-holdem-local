@@ -5,7 +5,7 @@ const AI_NAMES = ['老陈', '阿杰', '大刘', '小林', '阿May', '老K', '阿
 const AI_DELAY = 750;          // AI 思考延时，让节奏可读
 
 let game = null;
-let config = { opponents: 3, stack: 1000, sb: 10, bb: 20, style: 'random', blindUp: 10 };
+let config = { opponents: 3, stack: 1000, sb: 10, bb: 20, style: 'random', blindUp: 10, ante: 1 };
 let revealAll = false;         // 摊牌时是否公开所有手牌
 let winnerIds = [];
 let aiTimer = null;
@@ -24,6 +24,7 @@ function initSetup() {
   });
   bindSeg('optStyle', v => config.style = v);
   bindSeg('optBlindUp', v => config.blindUp = Number(v));
+  bindSeg('optAnte', v => config.ante = Number(v));
 
   $('btnStart').onclick = startGame;
   $('btnMenu').onclick = () => {
@@ -105,6 +106,7 @@ function startGame() {
     players,
     smallBlind: config.sb,
     blindInterval: config.blindUp,
+    anteMultiple: config.ante,
     bigBlind: config.bb,
     startStack: config.stack,
     onEvent: handleEvent
@@ -224,12 +226,14 @@ function render() {
   // 盲注等级：涨盲后要能一眼看到当前级别，以及距下次涨盲还有几手
   const bl = $('blindLabel');
   bl.textContent = `盲注 ${game.smallBlind}/${game.bigBlind}`
+    + (game.ante > 0 ? `+${game.ante}` : '')
     + (game.blindLevel > 1 ? ` · L${game.blindLevel}` : '');
+  const anteTip = game.ante > 0 ? `，大盲位另付前注 ${game.ante}` : '';
   if (game.blindInterval > 0) {
     const left = game.blindInterval - ((game.handNumber - 1) % game.blindInterval);
-    bl.title = `第 ${game.blindLevel} 级，再 ${left} 手后翻倍`;
+    bl.title = `第 ${game.blindLevel} 级，再 ${left} 手后翻倍${anteTip}`;
   } else {
-    bl.title = '固定盲注';
+    bl.title = `固定盲注${anteTip}`;
   }
   $('streetLabel').textContent = STREET_LABEL[game.street] || '';
   $('potDisplay').textContent = `底池 ${game.pot}`;
