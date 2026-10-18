@@ -364,6 +364,7 @@ function buildSeats(n) {
     seat.innerHTML = `
       <div class="pos-mark hidden"></div>
       <div class="allin-tag hidden">ALL IN</div>
+      <div class="win-badge hidden">🏆 赢</div>
       <div class="nm"></div>
       <div class="st"></div>
       <div class="act"></div>
@@ -380,16 +381,24 @@ function buildSeats(n) {
 function updateSeat(p, i, seat) {
   if (!seat) return;
 
+  const isWinner = winnerIds.includes(p.id);
   seat.classList.toggle('acting', i === game.actingIndex && !game.handOver);
   seat.classList.toggle('folded', p.folded || p.sittingOut);
-  seat.classList.toggle('winner', winnerIds.includes(p.id));
+  seat.classList.toggle('winner', isWinner);
 
   setText(seat.querySelector('.nm'), p.name);
   setText(seat.querySelector('.st'), p.sittingOut ? '已淘汰' : String(p.stack));
   setText(seat.querySelector('.act'), p.lastAction || '');
-  // 摊牌时显示成手牌型
-  setText(seat.querySelector('.made'),
-    revealAll && p.handResult && !p.folded ? describeHand(p.handResult) : '');
+
+  // 摊牌时显示成手牌型；赢家金色、其余暗灰，一眼看出谁的牌大
+  const madeEl = seat.querySelector('.made');
+  const showMade = revealAll && p.handResult && !p.folded;
+  setText(madeEl, showMade ? describeHand(p.handResult) : '');
+  madeEl.classList.toggle('win', showMade && isWinner);
+  madeEl.classList.toggle('lose', showMade && !isWinner);
+
+  // 摊牌且有胜负（showCards）时，赢家座位挂「🏆 赢」角标
+  setShown(seat.querySelector('.win-badge'), revealAll && isWinner);
 
   // 位置标记做成独立圆牌挂在座位角上，比挤在名字里更醒目
   const posMark = i === game.buttonIndex ? { cls: 'btn-d', txt: 'D' }
