@@ -9,6 +9,7 @@ let config = { opponents: 3, stack: 1000, sb: 10, bb: 20, style: 'random', blind
 let revealAll = false;         // 摊牌时是否公开所有手牌
 let winnerIds = [];
 let aiTimer = null;
+let resultTimer = null;        // handEnd 后延迟展示结果的句柄，换手时必须清掉
 let stackAtHandStart = 0;      // 本手开局时我的筹码，用于算本手盈亏
 let fastForward = false;       // 我弃牌后快进本手，跳过 AI 思考延时
 let seatEls = [];              // 座位 DOM 缓存，索引对齐 game.players
@@ -145,7 +146,16 @@ function startHeCountdown(sec, onDone) {
 }
 
 function nextHand() {
+  // 重入保护：当前手还没结束就被调到，说明是野定时器或连点造成的重复调用。
+  // game.startHand() 不检查 handOver，放任进去会直接重新发牌——手牌号跳跃、
+  // rollLogToHistory 把进行中的日志归档冲走，表现就是「突然跳手 + 记录缺失」。
+  if (game && !game.handOver) {
+    clearHeCountdown();
+    return;
+  }
   clearHeCountdown();
+  if (resultTimer) { clearTimeout(resultTimer); resultTimer = null; }
+  if (aiTimer) { clearTimeout(aiTimer); aiTimer = null; }
   revealAll = false;
   winnerIds = [];
   fastForward = false;
@@ -182,7 +192,10 @@ function handleEvent(ev) {
       winnerIds = ev.winners.map(w => w.player.id);
       hideActions();          // 本手已结束，动作条一律收起，不依赖按钮自己清
       render();
-      setTimeout(() => showResult(ev.winners, ev.showCards), fastForward ? 120 : 600);
+      // 句柄要留着：这个延迟回调会调 nextHand，若跨手存活会把进行中的牌局作废
+      if (resultTimer) clearTimeout(resultTimer);
+      resultTimer = setTimeout(
+        () => showResult(ev.winners, ev.showCards), fastForward ? 120 : 600);
       break;
     case 'blindUp': {
       // 闪一下标签，避免涨盲被忽略
@@ -580,6 +593,11 @@ function openRaisePanel(p, act) {
 
 // ---------------- 结果浮层 ----------------
 function showResult(winners, showCards) {
+  resultTimer = null;
+  // 本函数是延迟回调：真执行时牌局可能已经进入下一手。
+  // 此时既不能展示上一手的结果，更不能让它启动倒计时去作废进行中的牌局。
+  if (!game || !game.handOver) return;
+
   const body = $('resultBody');
   body.innerHTML = '';
 
