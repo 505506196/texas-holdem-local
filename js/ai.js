@@ -142,17 +142,20 @@ function decideAction(game, player) {
     const notation = handNotation(player.hole);
     const base = POSITION_RANGES[seat] || POSITION_RANGES.MP;
 
-    // 已有人加注过 ⇒ 用 3bet/跟注范围；无人加注 ⇒ 用开池范围
+    // 已有人加注过 ⇒ 用 3bet/跟注范围；无人加注（只有盲注）⇒ 用开池范围
     const raised = game.preflopAggressor >= 0 && game.preflopAggressor !== player.id;
 
-    if (toCall === 0) {
-      // 无人下注（或只有盲注）：按开池范围决定进不进
+    if (!raised) {
+      // 还没人加注，只有盲注在池：按开池范围决定进不进
+      // 注意：此时非大盲位要跟一个大盲（toCall>0）才算 limp，不能当成「面对加注」
       const openPct = adjustRangeForPersona(base.open, player.persona, 'open');
       const inOpen = openPct > 0 && topPercentRange(openPct).has(notation);
       if (canRaise && (inOpen || bluffing)) {
         return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, strength) };
       }
-      return { type: 'check' };
+      if (toCall === 0) return { type: 'check' };            // 大盲免费看牌
+      if (inOpen && toCall <= player.stack * 0.4) return { type: 'call' };  // 开池范围内 limp 跟大盲
+      return { type: 'fold' };
     }
 
     // 面对加注：强牌 3bet，中等牌跟注，其余弃牌
