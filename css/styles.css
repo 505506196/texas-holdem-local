@@ -156,6 +156,12 @@ body {
   cursor: default;
   transition: .2s;
 }
+/* 单挑加速：盲注每手翻倍，用橙色区别于常规涨盲的金色 */
+.blind-tag.rush {
+  border-color: rgba(255, 138, 61, .6);
+  background: rgba(255, 138, 61, .16);
+  color: #ffa761;
+}
 /* 刚涨盲时闪一下，让变化不容易被忽略 */
 .blind-tag.bumped { animation: blindPulse 1.5s ease-out; }
 @keyframes blindPulse {

@@ -97,7 +97,15 @@ class Game {
     // 涨盲：每 blindInterval 手翻一倍（10/20 → 20/40 → 40/80 …）
     // 必须在 postBlinds 之前生效，且要早于 minRaise 的初始化
     if (this.blindInterval > 0) {
-      const level = Math.floor((this.handNumber - 1) / this.blindInterval) + 1;
+      // 只剩两家单挑时改为每手翻倍，免得收官阶段被小盲注拖成拉锯
+      const headsUp = alive.length === 2;
+      const byHands = Math.floor((this.handNumber - 1) / this.blindInterval) + 1;
+      // 单挑逐手递增（首手没有「上一手」可翻倍，所以从第 2 手起）；
+      // 多人用手数公式，但取 max 保证级别只升不降——否则单挑升上去的
+      // 级别会被公式算回低级，盲注凭空缩水
+      const level = (headsUp && this.handNumber > 1)
+        ? this.blindLevel + 1
+        : Math.max(this.blindLevel, byHands);
       if (level !== this.blindLevel) {
         this.blindLevel = level;
         const mult = Math.pow(2, level - 1);
@@ -106,11 +114,13 @@ class Game {
         this.ante = this.bigBlind * this.anteMultiple;
         this.addLog(
           `▲ 盲注升至第 ${level} 级：${this.smallBlind} / ${this.bigBlind}`
-          + (this.ante > 0 ? `（前注 ${this.ante}）` : ''),
+          + (this.ante > 0 ? `（前注 ${this.ante}）` : '')
+          + (headsUp ? ' · 单挑加速' : ''),
           'blind'
         );
         this.emit('blindUp', {
-          level, smallBlind: this.smallBlind, bigBlind: this.bigBlind, ante: this.ante
+          level, smallBlind: this.smallBlind, bigBlind: this.bigBlind,
+          ante: this.ante, headsUp
         });
       }
     }

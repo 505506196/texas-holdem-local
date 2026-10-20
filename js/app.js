@@ -285,11 +285,18 @@ function render() {
   $('logHandNo').textContent = `第 ${game.handNumber} 手`;
   // 盲注等级：涨盲后要能一眼看到当前级别，以及距下次涨盲还有几手
   const bl = $('blindLabel');
+  // 单挑时盲注改为每手翻倍，标签要标出来，否则看着像涨盲失控
+  const headsUp = game.players.filter(p => !p.sittingOut).length === 2;
+  const rushing = headsUp && game.blindInterval > 0;
   bl.textContent = `盲注 ${game.smallBlind}/${game.bigBlind}`
     + (game.ante > 0 ? `+${game.ante}` : '')
-    + (game.blindLevel > 1 ? ` · L${game.blindLevel}` : '');
+    + (game.blindLevel > 1 ? ` · L${game.blindLevel}` : '')
+    + (rushing ? ' ⚡' : '');
+  bl.classList.toggle('rush', rushing);
   const anteTip = game.ante > 0 ? `，大盲位另付前注 ${game.ante}` : '';
-  if (game.blindInterval > 0) {
+  if (rushing) {
+    bl.title = `第 ${game.blindLevel} 级 · 单挑加速：每手翻倍${anteTip}`;
+  } else if (game.blindInterval > 0) {
     const left = game.blindInterval - ((game.handNumber - 1) % game.blindInterval);
     bl.title = `第 ${game.blindLevel} 级，再 ${left} 手后翻倍${anteTip}`;
   } else {

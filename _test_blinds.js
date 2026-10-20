@@ -89,8 +89,9 @@ check('第 2 手大盲已翻倍', bb2 === bb1 * 2, `${bb1} -> ${bb2}`);
 console.log('\n=== 涨盲事件与日志 ===');
 const events = [];
 const logs = [];
+// 必须 3 人：2 人就是单挑，会走每手翻倍的加速规则，测不到常规节奏
 const gE = new Game({
-  players: [{ name: '我' }, { name: 'A' }],
+  players: [{ name: '我' }, { name: 'A' }, { name: 'B' }],
   smallBlind: 10, bigBlind: 20, startStack: 100000, blindInterval: 3,
   onEvent: ev => {
     if (ev.type === 'blindUp') events.push(ev);
@@ -104,6 +105,56 @@ check('事件带正确金额', events[0] && events[0].smallBlind === 20 && event
   events[0] ? `${events[0].smallBlind}/${events[0].bigBlind}` : 'none');
 check('写入盲注日志', logs.length === 2 && /盲注升至/.test(logs[0]),
   `实际 ${logs.length} 条: ${logs[0] || 'none'}`);
+
+console.log('\n=== 单挑加速：只剩两家时每手翻倍 ===');
+function mkHU(interval) {
+  return new Game({
+    players: [{ name: '我' }, { name: 'A' }],
+    smallBlind: 10, bigBlind: 20, startStack: 10000000,
+    blindInterval: interval, anteMultiple: 0, onEvent: () => {}
+  });
+}
+const hu = mkHU(10);           // interval 很长，涨的只可能来自单挑规则
+const huLv = [];
+for (let h = 1; h <= 5; h++) {
+  hu.startHand();
+  huLv.push({ hand: hu.handNumber, sb: hu.smallBlind, bb: hu.bigBlind, lv: hu.blindLevel });
+  hu.handOver = true;
+}
+check('单挑第 1 手不涨，仍是基础盲注 10/20',
+  huLv[0].sb === 10 && huLv[0].bb === 20, JSON.stringify(huLv[0]));
+check('单挑第 2 手翻倍到 20/40',
+  huLv[1].sb === 20 && huLv[1].bb === 40, JSON.stringify(huLv[1]));
+check('单挑第 3 手翻倍到 40/80',
+  huLv[2].sb === 40 && huLv[2].bb === 80, JSON.stringify(huLv[2]));
+check('单挑第 5 手已到 160/320',
+  huLv[4].sb === 160 && huLv[4].bb === 320, JSON.stringify(huLv[4]));
+check('单挑每手升一级', huLv.map(l => l.lv).join(',') === '1,2,3,4,5',
+  huLv.map(l => l.lv).join(','));
+
+// 关掉涨盲就不该因为单挑而擅自翻倍——尊重用户的「不涨盲」选择
+const huOff = mkHU(0);
+for (let h = 1; h <= 6; h++) { huOff.startHand(); huOff.handOver = true; }
+check('关闭涨盲时单挑也不翻倍',
+  huOff.smallBlind === 10 && huOff.bigBlind === 20 && huOff.blindLevel === 1,
+  `实际 ${huOff.smallBlind}/${huOff.bigBlind} L${huOff.blindLevel}`);
+
+// 多人局淘汰到只剩两家后，应当从当前级别继续往上，绝不能被手数公式拉回去
+const shrink = new Game({
+  players: [{ name: '我' }, { name: 'A' }, { name: 'B' }],
+  smallBlind: 10, bigBlind: 20, startStack: 10000000,
+  blindInterval: 10, anteMultiple: 0, onEvent: () => {}
+});
+for (let h = 1; h <= 12; h++) { shrink.startHand(); shrink.handOver = true; }
+const lvBefore = shrink.blindLevel, bbBefore = shrink.bigBlind;
+shrink.players[2].sittingOut = true;        // B 出局，进入单挑
+shrink.startHand();
+const lvAfter = shrink.blindLevel, bbAfter = shrink.bigBlind;
+check('多人阶段按手数涨到 L2', lvBefore === 2 && bbBefore === 40,
+  `L${lvBefore} bb=${bbBefore}`);
+check('转入单挑后在原级别上继续翻倍，不回退',
+  lvAfter === lvBefore + 1 && bbAfter === bbBefore * 2,
+  `L${lvBefore}(${bbBefore}) -> L${lvAfter}(${bbAfter})`);
 
 console.log('\n=== 涨盲后完整对局仍能跑通 ===');
 const gFull = new Game({
