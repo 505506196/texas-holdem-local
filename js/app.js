@@ -10,6 +10,9 @@ let revealAll = false;         // 摊牌时是否公开所有手牌
 let winnerIds = [];
 let aiTimer = null;
 let resultTimer = null;        // handEnd 后延迟展示结果的句柄，换手时必须清掉
+// 每开新一手 +1。所有延迟回调都捕获发起时的世代号，执行时比对，
+// 不一致说明牌局已经翻篇——回调必须自行作废，否则会作用到新牌局上。
+let handGen = 0;
 let stackAtHandStart = 0;      // 本手开局时我的筹码，用于算本手盈亏
 let fastForward = false;       // 我弃牌后快进本手，跳过 AI 思考延时
 let seatEls = [];              // 座位 DOM 缓存，索引对齐 game.players
@@ -162,8 +165,16 @@ function nextHand() {
   $('handEndBar').classList.add('hidden');
   $('skipBar').classList.add('hidden');
   // 必须先归档（要用旧的 stackAtHandStart 算上一手盈亏），再更新为本手起点
+  // 我输光了就不该再开新一手——否则只能干看着 AI 继续打
+  if (game.players[0].stack <= 0) {
+    handGen++;
+    showGameOver({ winner: null, humanBroke: true });
+    return;
+  }
+
   rollLogToHistory();
   stackAtHandStart = game.players[0].stack;
+  handGen++;                      // 先递增，让所有旧回调立刻失效
   const ok = game.startHand();
   if (ok) {
     render();
@@ -194,8 +205,13 @@ function handleEvent(ev) {
       render();
       // 句柄要留着：这个延迟回调会调 nextHand，若跨手存活会把进行中的牌局作废
       if (resultTimer) clearTimeout(resultTimer);
-      resultTimer = setTimeout(
-        () => showResult(ev.winners, ev.showCards), fastForward ? 120 : 600);
+      {
+        const gen = handGen;
+        resultTimer = setTimeout(() => {
+          if (gen !== handGen) return;          // 牌局已翻篇，这次结果作废
+          showResult(ev.winners, ev.showCards);
+        }, fastForward ? 120 : 600);
+      }
       break;
     case 'blindUp': {
       // 闪一下标签，避免涨盲被忽略
@@ -205,9 +221,11 @@ function handleEvent(ev) {
       bl.classList.add('bumped');
       break;
     }
-    case 'gameOver':
-      setTimeout(() => showGameOver(ev), 500);
+    case 'gameOver': {
+      const gen = handGen;
+      setTimeout(() => { if (gen === handGen) showGameOver(ev); }, 500);
       break;
+    }
   }
 }
 
@@ -230,7 +248,10 @@ function scheduleTurn() {
     syncSkipBar();
 
     const delay = fastForward ? 0 : AI_DELAY + Math.random() * 400;
+    const gen = handGen;
     aiTimer = setTimeout(() => {
+      // 跨手时 actingIndex 可能碰巧撞上旧的 idx，单靠它挡不住，要比世代号
+      if (gen !== handGen) return;
       if (!game || game.handOver || game.actingIndex !== idx) return;
       const move = decideAction(game, p);
       game.applyAction(idx, move.type, move.target);
@@ -398,6 +419,9 @@ function updateSeat(p, i, seat) {
   seat.classList.toggle('acting', i === game.actingIndex && !game.handOver);
   seat.classList.toggle('folded', p.folded || p.sittingOut);
   seat.classList.toggle('winner', isWinner);
+  // 本街最后一个加注者＝当前主动方，面对他才要决定防守强度，单独标出来
+  seat.classList.toggle('aggressor',
+    game.lastAggressor === i && !p.folded && !p.sittingOut && !game.handOver);
 
   setText(seat.querySelector('.nm'), p.name);
   setText(seat.querySelector('.st'), p.sittingOut ? '已淘汰' : String(p.stack));
@@ -641,6 +665,16 @@ function showResult(winners, showCards) {
     b.classList.toggle('disabled', !hasDecisions);
   }
 
+  // 我已输光：这局到此为止，不给「下一手」，直接收尾结算
+  if (game.players[0].stack <= 0) {
+    closePanels();
+    $('handEndBar').classList.add('hidden');
+    $('skipBar').classList.add('hidden');
+    const gen = handGen;
+    setTimeout(() => { if (gen === handGen) showGameOver({ humanBroke: true }); }, 900);
+    return;
+  }
+
   // 我弃牌并主动「跳过本手」，说明不关心这手——直接进下一手，不弹操作条
   if (fastForward) { closePanels(); nextHand(); return; }
 
@@ -666,7 +700,9 @@ function showHandEndBar(merged, delta, deltaText, showCards) {
   $('handEndBar').classList.remove('hidden');
 
   // 默认 10 秒后自动进下一手；点「查看复盘」或「下一手」会取消
+  const gen = handGen;
   startHeCountdown(10, () => {
+    if (gen !== handGen) return;      // 期间已经换手，这个倒计时是上一手的遗物
     closePanels();
     $('handEndBar').classList.add('hidden');
     $('skipBar').classList.add('hidden');
@@ -683,9 +719,14 @@ function showReview() {
   $('review-panel').classList.remove('hidden');
   syncPanelOpen();
 
-  // 蒙特卡洛是同步计算，先让浏览器把「计算中」渲染出来再开跑
+  // 蒙特卡洛是同步计算，先让浏览器把「计算中」渲染出来再开跑。
+  // 它会阻塞主线程上千毫秒，期间排队的点击在解冻后一次性涌出，
+  // 所以回调里必须确认牌局没翻篇——换手后 handHistory 已被清空。
+  const gen = handGen;
   setTimeout(() => {
+    if (gen !== handGen) return;
     const rv = reviewHand(game);
+    if (gen !== handGen) return;      // 计算期间换手了，结果作废
     body.innerHTML = '';
 
     const sum = document.createElement('div');

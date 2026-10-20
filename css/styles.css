@@ -400,6 +400,25 @@ body {
   min-height: 15px;
   margin-top: 2px;
 }
+
+/* ---------- 本街主动方（最后加注者） ---------- */
+/* 橙色是本桌独占的「攻击」色：金色＝该你行动/赢家，红色＝盲注，互不混淆 */
+.seat.aggressor {
+  border-color: #ff8a3d;
+  box-shadow: 0 0 0 2px rgba(255, 138, 61, .45), 0 0 22px rgba(255, 138, 61, .28);
+}
+/* 把已有的行动文字提成橙色胶囊，一眼看到加注到了多少 */
+.seat.aggressor .act {
+  color: #2b1405;
+  background: linear-gradient(180deg, #ffa761, #ff8a3d);
+  font-weight: 800;
+  padding: 1px 9px;
+  border-radius: 9px;
+  display: inline-block;
+  box-shadow: 0 1px 6px rgba(255, 138, 61, .45);
+}
+/* 该他行动时金色框优先，避免两种高亮打架 */
+.seat.aggressor.acting { border-color: var(--gold); }
 .seat .hole { display: flex; gap: 4px; justify-content: center; margin-top: 6px; }
 /* 牌型名：摊牌时放大成胶囊，赢家金色、败家暗灰，强弱对比一目了然 */
 .seat .made {
