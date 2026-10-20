@@ -55,6 +55,7 @@ class Game {
     this.log = [];
     this.pots = [];
     this.handHistory = [];   // 本手每个决策点的快照，供复盘使用
+    this.autoRunTimer = null;  // all-in 后自动发完剩余公共牌的定时器句柄
   }
 
   emit(type, payload) {
@@ -78,6 +79,7 @@ class Game {
 
   // ---------------- 开始新一手 ----------------
   startHand() {
+    this.clearAutoRun();          // 上一手若在 all-in 自动发牌中被切走，先掐断
     // 淘汰没钱的玩家
     for (const p of this.players) {
       if (p.stack <= 0) p.sittingOut = true;
@@ -468,7 +470,23 @@ class Game {
     this.emit('turn', { index: next, player: this.players[next] });
   }
 
+  // 取消 all-in 后的自动发牌链。换手或本手结算时必须调，否则它会发到下一手上
+  clearAutoRun() {
+    if (this.autoRunTimer) {
+      clearTimeout(this.autoRunTimer);
+      this.autoRunTimer = null;
+    }
+  }
+
   nextStreet() {
+    // 本手已经结算，残留的自动推进一律作废
+    if (this.handOver) return;
+
+    const order0 = ['preflop', 'flop', 'turn', 'river', 'showdown'];
+    // street 已经走到头还被调到，说明是重入。放任下去 order[5] 是 undefined，
+    // 会把 street 写成 undefined 并继续往 board 发第 6、7 张牌。
+    if (order0.indexOf(this.street) < 0 || this.street === 'showdown') return;
+
     // 结算本轮下注到底池，重置轮次状态
     for (const p of this.players) {
       p.bet = 0;
@@ -501,9 +519,14 @@ class Game {
 
     // 翻牌后从按钮左手位开始行动
     if (this.playersToAct().length <= 1) {
-      // 所有人都 all-in，直接跑完剩余公共牌
+      // 所有人都 all-in，直接跑完剩余公共牌。
+      // 句柄必须留着：这条自动推进链若跨手存活，会把下一手直接推到翻牌甚至河牌。
       this.emit('turn', { index: -1, player: null });
-      setTimeout(() => this.nextStreet(), 700);
+      this.clearAutoRun();
+      this.autoRunTimer = setTimeout(() => {
+        this.autoRunTimer = null;
+        this.nextStreet();
+      }, 700);
       return;
     }
     this.actingIndex = this.nextActive(this.buttonIndex);
@@ -513,6 +536,7 @@ class Game {
   // ---------------- 结算 ----------------
   finishHand() {
     this.handOver = true;
+    this.clearAutoRun();          // 本手已结算，别让自动发牌链漏到下一手
     for (const p of this.players) p.bet = 0;
 
     const contenders = this.activePlayers();
