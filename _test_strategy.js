@@ -135,7 +135,31 @@ check('紧手范围更窄', adjustRangeForPersona(27, 'tight', 'open') < 27);
 check('跟注站跟注范围宽', adjustRangeForPersona(22, 'station', 'call') > 22);
 check('跟注站开池不宽', adjustRangeForPersona(27, 'station', 'open') < 27);
 check('调制有上下限', adjustRangeForPersona(5, 'tight', 'open') >= 5
-  && adjustRangeForPersona(50, 'loose', 'open') <= 55);
+  && adjustRangeForPersona(50, 'loose', 'open') <= 100);
+
+console.log('\n=== 狂人与鱼（针对性练习对手）===');
+// 狂人：开池远宽于松凶，3bet 也极宽——面对他不能按常规范围读牌
+check('狂人开池比松凶还宽',
+  adjustRangeForPersona(43, 'maniac', 'open') > adjustRangeForPersona(43, 'loose', 'open'),
+  `狂人 ${adjustRangeForPersona(43, 'maniac', 'open')}% vs 松凶 ${adjustRangeForPersona(43, 'loose', 'open')}%`);
+check('狂人 UTG 也开到 40% 以上',
+  adjustRangeForPersona(15, 'maniac', 'open') >= 40,
+  `${adjustRangeForPersona(15, 'maniac', 'open')}%`);
+check('狂人 3bet 范围远宽于稳健',
+  adjustRangeForPersona(8, 'maniac', 'threeBet') >= 25,
+  `${adjustRangeForPersona(8, 'maniac', 'threeBet')}%`);
+
+// 鱼：拿 52o、83o 这类垃圾牌也跟。这是「诈唬归零、纯价值榨取」的练习前提
+const fishCall = topPercentRange(adjustRangeForPersona(22, 'fish', 'call'));
+check('鱼的跟注范围覆盖 52o', fishCall.has('52o'));
+check('鱼的跟注范围覆盖 83o', fishCall.has('83o'));
+check('鱼几乎不主动开池',
+  adjustRangeForPersona(43, 'fish', 'open') <= 43,
+  `${adjustRangeForPersona(43, 'fish', 'open')}%`);
+// 常规性格不该被放开的上限波及
+check('放开上限不影响松凶开池',
+  adjustRangeForPersona(43, 'loose', 'open') === 51,
+  `${adjustRangeForPersona(43, 'loose', 'open')}%`);
 
 console.log(`\npass=${pass} fail=${fail}`);
 process.exit(fail ? 1 : 0);

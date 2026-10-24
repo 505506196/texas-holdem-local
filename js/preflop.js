@@ -115,8 +115,14 @@ function adjustRangeForPersona(basePercent, personaKey, action) {
     tight:    { open: -4, call: -3, threeBet: -2 },
     balanced: { open: 0, call: 0, threeBet: 0 },
     loose:    { open: +8, call: +6, threeBet: +4 },
-    station:  { open: -2, call: +10, threeBet: -3 }
+    station:  { open: -2, call: +10, threeBet: -3 },
+    // 狂人：开池接近任意两张，3bet 也极宽——面对他不能按常规范围读牌
+    maniac:   { open: +30, call: +40, threeBet: +22 },
+    // 鱼：自己很少开池，但什么都跟。52o 要 97%、83o 要 88% 的范围才覆盖得到，
+    // 所以 call 必须加到这个量级，否则做不出「拿 25、38 杂色也跟」的对手
+    fish:     { open: -1, call: +75, threeBet: -5 }
   };
   const mod = (mods[personaKey] || mods.balanced)[action] || 0;
-  return Math.max(5, Math.min(55, basePercent + mod));
+  // 上限放到 100：常规性格离它很远（松凶开池最多 51%），只有鱼会触顶
+  return Math.max(5, Math.min(100, basePercent + mod));
 }

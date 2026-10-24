@@ -1,11 +1,16 @@
 // AI 对手决策：手牌强度 + 底池赔率 + 位置 + 性格
 
 // 性格参数：紧手只玩强牌，松凶爱加注，跟注站几乎不加注
+// sizeMult 调节加注尺度：狂人翻前就打到 4~6 倍，逼你用没成形的牌做决定
 const PERSONAS = {
-  tight:    { name: '紧手', openThreshold: 8.0, callThreshold: 6.0, aggression: 0.35, bluff: 0.05 },
-  balanced: { name: '稳健', openThreshold: 6.5, callThreshold: 4.5, aggression: 0.5,  bluff: 0.12 },
-  loose:    { name: '松凶', openThreshold: 4.0, callThreshold: 2.5, aggression: 0.75, bluff: 0.25 },
-  station:  { name: '跟注站', openThreshold: 7.0, callThreshold: 2.0, aggression: 0.15, bluff: 0.03 }
+  tight:    { name: '紧手', openThreshold: 8.0, callThreshold: 6.0, aggression: 0.35, bluff: 0.05, sizeMult: 1,    stickiness: 0.35 },
+  balanced: { name: '稳健', openThreshold: 6.5, callThreshold: 4.5, aggression: 0.5,  bluff: 0.12, sizeMult: 1,    stickiness: 0.40 },
+  loose:    { name: '松凶', openThreshold: 4.0, callThreshold: 2.5, aggression: 0.75, bluff: 0.25, sizeMult: 1.15, stickiness: 0.55 },
+  station:  { name: '跟注站', openThreshold: 7.0, callThreshold: 2.0, aggression: 0.15, bluff: 0.03, sizeMult: 0.9,  stickiness: 0.70 },
+  // 狂人：范围接近任意两张，翻前就打大额，几乎不弃牌。练「放宽价值范围 + 3bet 回敬」
+  maniac:   { name: '狂人', openThreshold: 2.0, callThreshold: 1.0, aggression: 0.95, bluff: 0.42, sizeMult: 1.75, stickiness: 0.95 },
+  // 鱼：自己很少主动加注，但拿 25o 也跟到底。练「砍掉诈唬 + 顶对下满三条街」
+  fish:     { name: '鱼',   openThreshold: 6.5, callThreshold: 0.0, aggression: 0.08, bluff: 0.02, sizeMult: 0.8,  stickiness: 0.90 }
 };
 
 // Chen 公式：翻牌前起手牌打分
@@ -167,8 +172,10 @@ function decideAction(game, player) {
     if (inThreeBet && canRaise && rand < persona.aggression + 0.25) {
       return { type: raiseAct.type, target: sizeRaise(game, player, raiseAct, persona, strength) };
     }
-    // 跟注要同时满足范围与筹码占比（避免小牌为跟注押上过多筹码）
-    if (inCall && toCall <= player.stack * 0.4) return { type: 'call' };
+    // 跟注要同时满足范围与筹码占比（避免小牌为跟注押上过多筹码）。
+    // 狂人和鱼基本不看这个比例——「加多少都跟」正是要练的对手特征
+    const callCap = persona.stickiness || 0.4;
+    if (inCall && toCall <= player.stack * callCap) return { type: 'call' };
     if (bluffing && inCall) return { type: 'call' };
     return { type: 'fold' };
   }
@@ -243,6 +250,7 @@ function sizeRaise(game, player, raiseAct, persona, strength, board5) {
     else ratio = 0.4;
   }
   ratio *= 0.85 + Math.random() * 0.3;          // 加点随机，避免尺度可读
+  ratio *= persona.sizeMult || 1;               // 狂人放大、跟注站缩小
 
   let target = game.currentBet + Math.round((pot + toCall) * ratio);
   target = Math.max(raiseAct.min, Math.min(raiseAct.max, target));

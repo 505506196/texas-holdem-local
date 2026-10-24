@@ -407,6 +407,40 @@ body {
   margin-top: 2px;
 }
 
+/* ---------- 对手风格标签 ---------- */
+/* 练习时要一眼知道在打谁，颜色按威胁类型分而不是逐个性格配色 */
+.seat .persona-tag {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.5;
+  padding: 1px 7px;
+  margin-top: 2px;
+  border-radius: 8px;
+  letter-spacing: .3px;
+}
+.seat .persona-tag.pt-maniac {       /* 侵略型：最该警惕 */
+  background: rgba(217, 59, 69, .22);
+  color: #ff8c93;
+  border: 1px solid rgba(217, 59, 69, .5);
+}
+.seat .persona-tag.pt-loose {
+  background: rgba(255, 138, 61, .18);
+  color: #ffa761;
+  border: 1px solid rgba(255, 138, 61, .45);
+}
+.seat .persona-tag.pt-fish {         /* 被动型：价值榨取对象 */
+  background: rgba(74, 144, 217, .18);
+  color: #7cb4e8;
+  border: 1px solid rgba(74, 144, 217, .45);
+}
+.seat .persona-tag.pt-tight {
+  background: rgba(147, 163, 176, .14);
+  color: var(--muted);
+  border: 1px solid rgba(147, 163, 176, .32);
+}
+.seats-lg .seat .persona-tag { font-size: 8px; padding: 0 5px; }
+
 /* ---------- 本街主动方（最后加注者） ---------- */
 /* 橙色是本桌独占的「攻击」色：金色＝该你行动/赢家，红色＝盲注，互不混淆 */
 .seat.aggressor {

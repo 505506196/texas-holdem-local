@@ -4,6 +4,16 @@
 const AI_NAMES = ['老陈', '阿杰', '大刘', '小林', '阿May', '老K', '阿泰', '小美', '老周'];
 const AI_DELAY = 750;          // AI 思考延时，让节奏可读
 
+// 座位上的风格标签。颜色按「威胁类型」分：橙=侵略型，蓝=被动型，灰=常规
+const PERSONA_TAGS = {
+  maniac:   { label: '狂人',   cls: 'pt-maniac' },
+  loose:    { label: '松凶',   cls: 'pt-loose' },
+  fish:     { label: '鱼',     cls: 'pt-fish' },
+  station:  { label: '跟注站', cls: 'pt-fish' },
+  tight:    { label: '紧手',   cls: 'pt-tight' },
+  balanced: { label: '稳健',   cls: 'pt-tight' }
+};
+
 let game = null;
 let config = { opponents: 3, stack: 1000, sb: 10, bb: 20, style: 'random', blindUp: 10, ante: 1 };
 let revealAll = false;         // 摊牌时是否公开所有手牌
@@ -28,7 +38,17 @@ function initSetup() {
     const [sb, bb] = v.split(',').map(Number);
     config.sb = sb; config.bb = bb;
   });
-  bindSeg('optStyle', v => config.style = v);
+  bindSeg('optStyle', v => {
+    config.style = v;
+    const hints = {
+      random: '混合六种常见性格，接近真实牌桌',
+      tight:  '只玩强牌。对策：多偷盲，他一反抗就信他',
+      loose:  '范围宽、诈唬多。对策：放宽价值范围，按 MDF 防守别过度弃牌',
+      maniac: '任意两张都敢开，翻前就打 4~6 倍。对策：别跟注，用 55+/ATo+/KQo 3bet 回敬，不慢打',
+      fish:   '自己不加注，但拿 25o 也跟到底。对策：诈唬归零，顶对就下满三条街'
+    };
+    setText($('styleHint'), hints[v] || hints.random);
+  });
   bindSeg('optBlindUp', v => config.blindUp = Number(v));
   bindSeg('optAnte', v => config.ante = Number(v));
 
@@ -97,8 +117,9 @@ function bindSeg(id, onPick) {
 
 // ---------------- 建局 ----------------
 function startGame() {
+  // 随机混合纳入狂人和鱼——真实牌桌本来就坐着这两种人
   const personaPool = config.style === 'random'
-    ? ['tight', 'balanced', 'loose', 'station']
+    ? ['tight', 'balanced', 'loose', 'station', 'maniac', 'fish']
     : [config.style];
 
   const names = AI_NAMES.slice().sort(() => Math.random() - 0.5);
@@ -407,6 +428,7 @@ function buildSeats(n) {
       <div class="allin-tag hidden">ALL IN</div>
       <div class="win-badge hidden">🏆 赢</div>
       <div class="nm"></div>
+      <div class="persona-tag hidden"></div>
       <div class="st"></div>
       <div class="act"></div>
       <div class="hole"></div>
@@ -431,6 +453,14 @@ function updateSeat(p, i, seat) {
     game.lastAggressor === i && !p.folded && !p.sittingOut && !game.handOver);
 
   setText(seat.querySelector('.nm'), p.name);
+  // 对手风格标签：练习时要知道面对的是哪类人，才谈得上针对性打法
+  const ptag = seat.querySelector('.persona-tag');
+  const pinfo = !p.isHuman && !p.sittingOut ? PERSONA_TAGS[p.persona] : null;
+  if (pinfo) {
+    setText(ptag, pinfo.label);
+    ptag.className = `persona-tag ${pinfo.cls}`;
+  }
+  setShown(ptag, !!pinfo);
   setText(seat.querySelector('.st'), p.sittingOut ? '已淘汰' : String(p.stack));
   setText(seat.querySelector('.act'), p.lastAction || '');
 
